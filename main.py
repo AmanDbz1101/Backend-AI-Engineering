@@ -10,7 +10,7 @@ tasks = [
 ]
 
 
-@app.get("/")
+@app.get("/", summary="API info", description="Returns basic information about the API")
 async def root():
     return {
         "name": "Task API",
@@ -19,17 +19,17 @@ async def root():
     }
 
 
-@app.get("/health")
+@app.get("/health", summary="Health check", description="Returns the health status of the API")
 async def health():
     return {"status": "ok"}
 
 
-@app.get("/tasks")
+@app.get("/tasks", summary="List all tasks", description="Returns a list of all tasks")
 async def get_tasks():
     return tasks
 
 
-@app.get("/tasks/{task_id}")
+@app.get("/tasks/{task_id}", summary="Get a task by ID", description="Returns a single task by its ID")
 async def get_task(task_id: int):
     for task in tasks:
         if task["id"] == task_id:
@@ -37,7 +37,7 @@ async def get_task(task_id: int):
     raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
 
 
-@app.post("/tasks", status_code=201)
+@app.post("/tasks", status_code=201, summary="Create a new task", description="Creates a new task with the given title")
 async def create_task(request: Request):
     body = await request.json()
     title = body.get("title")
@@ -50,7 +50,7 @@ async def create_task(request: Request):
     return new_task
 
 
-@app.put("/tasks/{task_id}")
+@app.put("/tasks/{task_id}", summary="Update a task", description="Updates a task's title and/or done status")
 async def update_task(task_id: int, request: Request):
     body = await request.json()
     title = body.get("title")
@@ -70,7 +70,7 @@ async def update_task(task_id: int, request: Request):
     raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
 
 
-@app.delete("/tasks/{task_id}", status_code=204)
+@app.delete("/tasks/{task_id}", status_code=204, summary="Delete a task", description="Deletes a task by its ID")
 async def delete_task(task_id: int):
     for i, task in enumerate(tasks):
         if task["id"] == task_id:
