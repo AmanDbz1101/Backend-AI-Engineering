@@ -1,2 +1,6 @@
 venv
 assignments
+tasks.db
+server.log
+__pycache__
+*.pyc
