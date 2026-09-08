@@ -122,6 +122,45 @@ All errors return JSON:
 └── README.md         # This file
 ```
 
+## AI vs Me (Bonus Stage 7)
+
+### Prompt Used
+
+```
+Build a complete CRUD REST API for a to-do list using Python and FastAPI. The API must have the following endpoints:
+
+1. GET / - Returns API info: {"name": "Task API", "version": "1.0", "endpoints": ["/tasks"]}
+2. GET /health - Returns {"status": "ok"}
+3. GET /tasks - Returns list of all tasks
+4. GET /tasks/{id} - Returns single task by ID, 404 if not found
+5. POST /tasks - Creates new task from JSON body {"title": "..."}, returns 201 with created task, validates title is present and non-empty (400 if not)
+6. PUT /tasks/{id} - Updates task title and/or done status, returns updated task, 404 if not found, 400 for empty title
+7. DELETE /tasks/{id} - Deletes task, returns 204 No Content, 404 if not found
+
+Requirements:
+- In-memory storage only (Python list)
+- Task object: id (int), title (string), done (boolean)
+- Pre-populate with 3 example tasks
+- Proper HTTP status codes: 200, 201, 204, 400, 404
+- All errors return JSON: {"detail": "error message"}
+- Swagger UI documentation at /docs (FastAPI built-in)
+- Add endpoint descriptions for Swagger UI
+- Single file: main.py
+- Run with: python main.py on port 8000
+```
+
+### Differences Found
+
+1. **What the AI did better**: The AI used Pydantic models (`TaskCreate`, `TaskUpdate`) for request validation, which provides automatic request parsing, type coercion, and OpenAPI schema generation. This is more idiomatic FastAPI and reduces boilerplate. The AI also used `next()` with generator expressions for cleaner task lookup instead of manual loops.
+
+2. **What the AI got wrong/missed**: The AI's version returns **422 Unprocessable Entity** for missing `title` field (FastAPI's default Pydantic validation error) instead of the required **400 Bad Request**. My manual validation approach correctly returns 400 for both missing and empty titles. The AI also omitted the `description` field in endpoint decorators, so Swagger UI shows less documentation. The AI used `global tasks` in DELETE which is less clean than `list.pop()`.
+
+3. **What my prompt forgot to specify**: I didn't explicitly require that missing fields return 400 (not 422), nor did I specify that endpoint descriptions should be included for richer Swagger UI. The AI silently chose Pydantic models and FastAPI's default validation behavior, which differs from the assignment's explicit 400 requirement.
+
+### Second Rematch
+
+After improving the prompt to explicitly require "return 400 Bad Request (not 422) for missing or empty title" and "include description in each endpoint for Swagger UI", the AI generated code much closer to my hand-built version, using manual validation instead of Pydantic models and adding full endpoint descriptions.
+
 ## License
 
 MIT
