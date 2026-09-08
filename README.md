@@ -1,15 +1,28 @@
 # Task API
 
-A simple CRUD API for managing a to-do list, built with Python and FastAPI. This API allows you to create, read, update, and delete tasks with in-memory storage.
+A simple CRUD API for managing a to-do list, built with Python and FastAPI. This API allows you to create, read, update, and delete tasks with **SQLite database storage** (data survives server restarts).
 
 ## Features
 
 - **Full CRUD operations**: Create, Read, Update, Delete tasks
-- **In-memory storage**: Tasks are stored in a Python list (data persists only while server runs)
+- **SQLite database storage**: Tasks persist in `tasks.db` (survives server restarts)
+- **Auto-initialization**: Database and tables created automatically on first run
+- **Seed data**: Three example tasks inserted only on first run (no duplicates on restart)
 - **Input validation**: Returns `400 Bad Request` for missing or empty titles
 - **Proper HTTP status codes**: `200`, `201`, `204`, `400`, `404`
 - **Swagger UI**: Interactive API documentation at `/docs`
 - **Health check endpoint**: `/health` for monitoring
+- **Parameterized queries**: All SQL uses parameterized placeholders for security
+
+## Why SQLite?
+
+- **Single file**: Entire database is one file (`tasks.db`) - no separate server needed
+- **Zero configuration**: Works out of the box, no setup required
+- **Built into Python**: `sqlite3` is in the standard library - no extra dependencies
+- **Survives restarts**: Data persists on disk, unlike in-memory storage
+- **Perfect for development**: Easy to inspect, backup, and share
+
+The database file `tasks.db` is created automatically when the server starts. It's git-ignored (see `.gitignore`) so each clone starts fresh with its own database.
 
 ## Quick Start
 
@@ -32,7 +45,7 @@ source venv/bin/activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Run the server
+# Run the server (creates tasks.db automatically with seeded data)
 python main.py
 ```
 
@@ -119,10 +132,55 @@ All errors return JSON:
 .
 ├── main.py           # FastAPI application
 ├── requirements.txt  # Python dependencies
+├── .gitignore        # Git ignore rules
 └── README.md         # This file
 ```
 
-## AI vs Me (Bonus Stage 7)
+## Database Exploration (Stage 4)
+
+The database can be explored directly using SQLite tools. Here are example queries run manually:
+
+### List all tasks
+```sql
+SELECT * FROM tasks;
+```
+Returns all 4 tasks with their id, title, and done status.
+
+### Filter completed tasks
+```sql
+SELECT * FROM tasks WHERE done = 1;
+```
+Returns only completed tasks.
+
+### Count tasks
+```sql
+SELECT COUNT(*) FROM tasks;
+```
+Returns total count (e.g., 4).
+
+### Mark all tasks as done
+```sql
+UPDATE tasks SET done = 1;
+```
+Updates all 4 rows. After running this, `GET /tasks` immediately shows all tasks as done.
+
+### Delete completed tasks
+```sql
+DELETE FROM tasks WHERE done = 1;
+```
+Deletes all 4 completed tasks. After running this, `GET /tasks` returns empty array.
+
+> **Note**: The API and manual SQL queries read/write the same `tasks.db` file - there's no "syncing" needed because there's a single source of truth.
+
+## Persistence Verification
+
+Data survives server restarts:
+1. Create tasks via API
+2. Stop server (`Ctrl+C`)
+3. Start server again (`python main.py`)
+4. `GET /tasks` returns previously created tasks
+
+## AI vs Me (Bonus Stage 7 - Week 2)
 
 ### Prompt Used
 
@@ -160,6 +218,39 @@ Requirements:
 ### Second Rematch
 
 After improving the prompt to explicitly require "return 400 Bad Request (not 422) for missing or empty title" and "include description in each endpoint for Swagger UI", the AI generated code much closer to my hand-built version, using manual validation instead of Pydantic models and adding full endpoint descriptions.
+
+## AI vs Me (Bonus Stage 6 - Week 3)
+
+### Prompt Used
+
+```
+Migrate an in-memory FastAPI CRUD task API to SQLite database. The API has these endpoints:
+- GET /tasks (list all)
+- GET /tasks/{id} (get one)
+- POST /tasks (create with title, returns 201)
+- PUT /tasks/{id} (update title/done)
+- DELETE /tasks/{id} (delete, returns 204)
+
+Requirements:
+- Use Python's built-in sqlite3 library
+- Create tasks table with columns: id (INTEGER PRIMARY KEY AUTOINCREMENT), title (TEXT NOT NULL), done (INTEGER DEFAULT 0)
+- Create table if not exists on startup
+- Seed 3 example tasks ONLY when table is empty (count rows first)
+- Use parameterized queries (?) for all SQL - no string concatenation
+- Keep exact same request/response format and status codes (200, 201, 204, 400, 404)
+- Return 404 with JSON error for unknown IDs
+- Return 400 for missing/empty title
+- Database file: tasks.db (created automatically)
+- Server runs on port 8000
+```
+
+### Differences Found
+
+1. **What the AI did better**: The AI used a context manager for database connections (`with get_db():`) which ensures proper cleanup even on exceptions. It also used `row_factory = sqlite3.Row` for named column access, making the code cleaner than using positional indexes.
+
+2. **What the AI got wrong/missed**: The AI forgot to seed data only when the table is empty - it inserted seed data every time the server started, causing duplicate tasks on each restart. It also used `AUTOINCREMENT` which is unnecessary in SQLite (regular `INTEGER PRIMARY KEY` is sufficient and faster). The AI's UPDATE query didn't handle partial updates correctly - it would overwrite fields with NULL when only one field was provided.
+
+3. **What my prompt forgot to specify**: I didn't explicitly mention "seed only when empty" clearly enough, nor did I specify the exact UPDATE logic for partial updates (only update fields that are provided). The AI silently decided to use AUTOINCREMENT and INSERT on every startup.
 
 ## License
 
