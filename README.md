@@ -1,11 +1,11 @@
 # Task API
 
-A simple CRUD API for managing a to-do list, built with Python and FastAPI. This API allows you to create, read, update, and delete tasks with **SQLite database storage** (data survives server restarts).
+A simple CRUD API for managing a to-do list, built with Python and FastAPI. This API allows you to create, read, update, and delete tasks with **PostgreSQL database storage** (data survives container restarts via Docker volume).
 
 ## Features
 
 - **Full CRUD operations**: Create, Read, Update, Delete tasks
-- **SQLite database storage**: Tasks persist in `tasks.db` (survives server restarts)
+- **PostgreSQL database storage**: Tasks persist in Postgres (survives server and container restarts)
 - **Auto-initialization**: Database and tables created automatically on first run
 - **Seed data**: Three example tasks inserted only on first run (no duplicates on restart)
 - **Input validation**: Returns `400 Bad Request` for missing or empty titles
@@ -13,31 +13,40 @@ A simple CRUD API for managing a to-do list, built with Python and FastAPI. This
 - **Swagger UI**: Interactive API documentation at `/docs`
 - **Health check endpoint**: `/health` for monitoring
 - **Parameterized queries**: All SQL uses parameterized placeholders for security
+- **Docker Compose**: App + database start together with one command
+- **Clean architecture**: Repository pattern - storage implementation swapped without changing routes
 
-## Why SQLite?
+## Why PostgreSQL in Docker?
 
-- **Single file**: Entire database is one file (`tasks.db`) - no separate server needed
-- **Zero configuration**: Works out of the box, no setup required
-- **Built into Python**: `sqlite3` is in the standard library - no extra dependencies
-- **Survives restarts**: Data persists on disk, unlike in-memory storage
-- **Perfect for development**: Easy to inspect, backup, and share
-
-The database file `tasks.db` is created automatically when the server starts. It's git-ignored (see `.gitignore`) so each clone starts fresh with its own database.
+- **Production-like**: Uses the same database engine as production
+- **Persistent volumes**: Data survives container restarts via Docker named volume
+- **Zero configuration**: `docker compose up` starts everything
+- **Connection via .env**: Connection string in gitignored `.env`, template in `.env.example`
+- **Health checks**: Database health checked before app starts
 
 ## Quick Start
 
 ### Prerequisites
 
-- Python 3.10+
-- Virtual environment (recommended)
+- Docker and Docker Compose
+- (Optional) Python 3.10+ for local development
 
-### Installation & Run
+### Installation & Run with Docker (Recommended)
 
 ```bash
 # Clone the repository
 git clone <your-repo-url>
 cd backend-ai-engineering
 
+# Start the entire stack (Postgres + API)
+docker compose up -d
+
+# The API will be available at http://localhost:8000
+```
+
+### Local Development
+
+```bash
 # Create and activate virtual environment
 python3 -m venv venv
 source venv/bin/activate
@@ -45,7 +54,10 @@ source venv/bin/activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Run the server (creates tasks.db automatically with seeded data)
+# Copy .env.example to .env and adjust if needed
+cp .env.example .env
+
+# Run the server (requires running Postgres - use `docker compose up -d db`)
 python main.py
 ```
 
@@ -130,55 +142,88 @@ All errors return JSON:
 
 ```
 .
-├── main.py           # FastAPI application
-├── requirements.txt  # Python dependencies
-├── .gitignore        # Git ignore rules
-└── README.md         # This file
+├── main.py              # FastAPI application (routes only)
+├── repository.py        # Postgres repository (storage layer)
+├── init.sql             # Database initialization script
+├── docker-compose.yml   # Docker Compose for app + db
+├── Dockerfile           # App container definition
+├── requirements.txt     # Python dependencies
+├── .env.example         # Environment variables template
+├── .gitignore           # Git ignore rules
+└── README.md            # This file
 ```
 
-## Database Exploration (Stage 4)
+## Architecture: Repository Pattern
 
-The database can be explored directly using SQLite tools. Here are example queries run manually:
+The application uses the **Repository Pattern** to separate the storage layer from the business logic:
 
-### List all tasks
-```sql
-SELECT * FROM tasks;
-```
-Returns all 4 tasks with their id, title, and done status.
+- **main.py** - Contains only HTTP routes, no SQL
+- **repository.py** - Implements `TaskRepository` with Postgres storage
+- **Swappable storage**: Changing from SQLite to Postgres only required replacing `repository.py` - routes unchanged
 
-### Filter completed tasks
-```sql
-SELECT * FROM tasks WHERE done = 1;
-```
-Returns only completed tasks.
-
-### Count tasks
-```sql
-SELECT COUNT(*) FROM tasks;
-```
-Returns total count (e.g., 4).
-
-### Mark all tasks as done
-```sql
-UPDATE tasks SET done = 1;
-```
-Updates all 4 rows. After running this, `GET /tasks` immediately shows all tasks as done.
-
-### Delete completed tasks
-```sql
-DELETE FROM tasks WHERE done = 1;
-```
-Deletes all 4 completed tasks. After running this, `GET /tasks` returns empty array.
-
-> **Note**: The API and manual SQL queries read/write the same `tasks.db` file - there's no "syncing" needed because there's a single source of truth.
+This proves "switch storage really does change only one file" as intended by the assignment.
 
 ## Persistence Verification
 
-Data survives server restarts:
-1. Create tasks via API
-2. Stop server (`Ctrl+C`)
-3. Start server again (`python main.py`)
-4. `GET /tasks` returns previously created tasks
+Data survives **both** server restarts AND container restarts:
+
+### Test 1: App restart only
+```bash
+# Create a task
+curl -X POST http://localhost:8000/tasks -H "Content-Type: application/json" -d '{"title":"Test"}'
+
+# Restart only the app container
+docker compose restart app
+
+# Verify task still exists
+curl http://localhost:8000/tasks
+```
+
+### Test 2: Full stack restart (proves Docker volume persistence)
+```bash
+# Create a task
+curl -X POST http://localhost:8000/tasks -H "Content-Type: application/json" -d '{"title":"Persistence test"}'
+# Returns: {"id":5,"title":"Persistence test","done":false}
+
+# Stop and remove everything (containers, network)
+docker compose down
+
+# Start everything again
+docker compose up -d
+
+# Verify task still exists
+curl http://localhost:8000/tasks
+# Returns: [{"id":1,"title":"Learn FastAPI","done":false},{"id":2,"title":"Build CRUD API","done":false},{"id":3,"title":"Deploy to GitHub","done":false},{"id":5,"title":"Persistence test","done":false}]
+```
+
+**Result**: The "Persistence test" task (id: 5) survives a complete `docker compose down && docker compose up -d` cycle because PostgreSQL data is stored in a Docker named volume (`postgres_data`).
+
+## Database Exploration
+
+The database can be explored directly:
+
+```bash
+# Connect to Postgres in the container
+docker compose exec db psql -U postgres -d tasks_db
+
+# Or run queries directly
+docker compose exec db psql -U postgres -d tasks_db -c "SELECT * FROM tasks;"
+```
+
+Example queries:
+```sql
+-- List all tasks
+SELECT * FROM tasks ORDER BY id;
+
+-- Filter completed tasks
+SELECT * FROM tasks WHERE done = true;
+
+-- Count tasks
+SELECT COUNT(*) FROM tasks;
+
+-- Mark all tasks as done
+UPDATE tasks SET done = true;
+```
 
 ## AI vs Me (Bonus Stage 7 - Week 2)
 
